@@ -36,7 +36,10 @@ if uploaded:
     st.error(f"Error reading file: {e}")
     st.stop()
 
-  df["Past Due?"] = (np.isnat(df["Trained"])) & (df["Training Due"] <= pd.Timestamp.now())
+  df["Trained"] = pd.to_datetime(df["Trained"], errors="coerce")
+  df["Training Due"] = pd.to_datetime(df["Training Due"], errors="coerce")
+    
+  df["Past Due?"] = (np.isna(df["Trained"])) & (df["Training Due"] <= pd.Timestamp.now())
   df["Status"] = df["Past Due?"].map({True: "Expired", False: "Pending"})
 
   pivot = pd.pivot_table(df, values="Training Due", index="Compound", columns="Status", aggfunc="count", fill_value=0)
