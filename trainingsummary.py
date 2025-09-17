@@ -7,6 +7,9 @@ Original file is located at
     https://colab.research.google.com/drive/1B6Pu3l9N63Uf_wra3nHIFWEq-cVbvwrb
 """
 
+# -*- coding: utf-8 -*-
+"""TrainingSummary.py"""
+
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -22,50 +25,102 @@ Upload your data, map the columns, and get a pivot table of **Facility × Status
 uploaded = st.file_uploader("Upload an Excel or CSV file", type=["xlsx", "xls", "csv"])
 
 def read_file(file):
-  name = file.name.lower()
-  if name.endswith(".csv"):
-    return pd.read_csv(file)
-
-  xl = pd.ExcelFile(file)
-  sheet = st.selectbox("Choose a sheet", xl.sheet_names, index=0)
+    name = (file.name or "").lower()
+    if name.endswith(".csv"):
+        # Be lenient with types and encodings
+        return pd.read_csv(file, low_memory=False)
+    else:
+        # Excel: let user pick a sheet, then parse that sheet
+        try:
+            xl = pd.ExcelFile(file)  # uses openpyxl/xlrd behind the scenes
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to open Excel file. Make sure 'openpyxl' is installed for .xlsx. "
+                f"Original error: {e}"
+            )
+        sheet = st.selectbox("Choose a sheet", xl.sheet_names, index=0)
+        # Parse via the ExcelFile object to avoid file-pointer issues
+        return xl.parse(sheet_name=sheet)
 
 if uploaded:
-  try:
-    df = read_file(uploaded)
-  except Exception as e:
-    st.error(f"Error reading file: {e}")
-    st.stop()
+    try:
+        df = read_file(uploaded)
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
+        st.stop()
 
-  df["Trained"] = pd.to_datetime(df["Trained"], errors="coerce")
-  df["Training Due"] = pd.to_datetime(df["Training Due"], errors="coerce")
-    
-  df["Past Due?"] = (np.isna(df["Trained"])) & (df["Training Due"] <= pd.Timestamp.now())
-  df["Status"] = df["Past Due?"].map({True: "Expired", False: "Pending"})
+    st.subheader("Map your columns")
 
-  pivot = pd.pivot_table(df, values="Training Due", index="Compound", columns="Status", aggfunc="count", fill_value=0)
+    # Best-guess defaults if present
+    guess_facility = next((c for c in df.columns if c.lower() in {"compound","facility","site","location"}), None)
+    guess_trained = next((c for c in df.columns if c.lower() in {"trained","date trained","completed","completion date"}), None)
+    guess_due     = next((c for c in df.columns if c.lower() in {"training due","due","due date"}), None)
 
-  st.dataframe(pivot, use_container_width=True)
-  st.subheader("Download results")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        facility_col = st.selectbox("Facility column", options=df.columns, index=(list(df.columns).index(guess_facility) if guess_facility in df.columns else 0))
+    with col2:
+        trained_col  = st.selectbox("Trained date column", options=df.columns, index=(list(df.columns).index(guess_trained) if guess_trained in df.columns else 0))
+    with col3:
+        due_col      = st.selectbox("Training due date column", options=df.columns, index=(list(df.columns).index(guess_due) if guess_due in df.columns else 0))
 
-  csv_bytes = pivot.reset_index().to_csv(index=False).encode("utf-8")
-  st.download_button(
-      label="⬇️ Download CSV",
-      data=csv_bytes,
-      file_name="training_status_pivot.csv",
-      mime="text/csv"
-  )
+    # Coerce to datetimes
+    df["_trained_dt"] = pd.to_datetime(df[trained_col], errors="coerce")
+    df["_due_dt"]     = pd.to_datetime(df[due_col], errors="coerce")
 
-  # Excel
-  excel_buf = io.BytesIO()
-  with pd.ExcelWriter(excel_buf, engine="xlsxwriter") as writer:
-      pivot.reset_index().to_excel(writer, index=False, sheet_name="Pivot")
-  st.download_button(
-      label="⬇️ Download Excel",
-      data=excel_buf.getvalue(),
-      file_name="training_status_pivot.xlsx",
-      mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  )
+    # Use today's end-of-day to be intuitive for “due by today”
+    now = pd.Timestamp.now().normalize() + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+
+    # Past due if NOT trained and due date is present and <= now
+    df["Past Due?"] = df["_trained_dt"].isna() & df["_due_dt"].notna() & (df["_due_dt"] <= now)
+
+    # Label status
+    df["Status"] = np.where(df["Past Due?"], "Expired", "Pending")
+
+    # Build pivot: counts of records by facility × status
+    pivot = pd.pivot_table(
+        df,
+        values=due_col,            # any non-nullable col would work; we count rows
+        index=facility_col,
+        columns="Status",
+        aggfunc="count",
+        fill_value=0
+    )
+
+    # Ensure both columns exist even if one is missing in data
+    for col in ["Expired", "Pending"]:
+        if col not in pivot.columns:
+            pivot[col] = 0
+    # Order columns nicely
+    pivot = pivot[["Expired", "Pending"]]
+
+    st.subheader("Pivot: Facility × Status (counts)")
+    st.dataframe(pivot.sort_index(), use_container_width=True)
+
+    st.subheader("Download results")
+
+    # CSV
+    csv_bytes = pivot.reset_index().to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="⬇️ Download CSV",
+        data=csv_bytes,
+        file_name="training_status_pivot.csv",
+        mime="text/csv"
+    )
+
+    # Excel
+    excel_buf = io.BytesIO()
+    with pd.ExcelWriter(excel_buf, engine="xlsxwriter") as writer:
+        pivot.reset_index().to_excel(writer, index=False, sheet_name="Pivot")
+    st.download_button(
+        label="⬇️ Download Excel",
+        data=excel_buf.getvalue(),
+        file_name="training_status_pivot.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # Small summary
+    st.markdown(f"**Total rows processed:** {len(df):,} • **Expired:** {int(df['Past Due?'].sum()):,} • **Pending:** {int((~df['Past Due?']).sum()):,}")
 
 else:
     st.info("Upload an Excel or CSV to get started.")
-
