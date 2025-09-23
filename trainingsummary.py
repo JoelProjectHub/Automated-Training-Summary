@@ -21,7 +21,7 @@ st.title("Training Status Pivot Builder")
 st.markdown("""
 Upload your data, map the columns, and get a pivot table of **Facility × Status** (Expired/Pending) with counts.
 """)
-st.subheader("Author Joel Perez")
+st.markdown("Author Joel Perez")
 
 uploaded = st.file_uploader("Upload an Excel or CSV file", type=["xlsx", "xls", "csv"])
 
