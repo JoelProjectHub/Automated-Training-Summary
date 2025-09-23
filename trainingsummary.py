@@ -78,6 +78,9 @@ if uploaded:
     df["Status"] = np.where(df["Past Due?"], "Expired", "Pending")
 
     # Build pivot: counts of records by facility × status
+# ... everything above unchanged ...
+
+    # Build pivot: counts of records by facility × status
     pivot = pd.pivot_table(
         df,
         values=due_col,            # any non-nullable col would work; we count rows
@@ -86,20 +89,36 @@ if uploaded:
         aggfunc="count",
         fill_value=0
     )
-
+    
     # Ensure both columns exist even if one is missing in data
     for col in ["Expired", "Pending"]:
         if col not in pivot.columns:
             pivot[col] = 0
-    # Order columns nicely
+    
+    # Order columns nicely + add Total  # <-- NEW
     pivot = pivot[["Expired", "Pending"]]
-
+    pivot["Total"] = pivot["Expired"] + pivot["Pending"]  # <-- NEW
+    
     st.subheader("Pivot: Facility × Status (counts)")
-    st.dataframe(pivot.sort_index(), use_container_width=True)
-
+    
+    # Width-friendly display (container width + compact numeric columns)  # <-- NEW
+    try:
+        st.dataframe(
+            pivot.sort_index(),
+            use_container_width=True,
+            column_config={
+                "Expired": st.column_config.NumberColumn(format="%,d", width="small"),
+                "Pending": st.column_config.NumberColumn(format="%,d", width="small"),
+                "Total":   st.column_config.NumberColumn(format="%,d", width="small"),
+            }
+        )
+    except Exception:
+        # Fallback if older Streamlit doesn't support column_config/width
+        st.dataframe(pivot.sort_index(), use_container_width=True)
+    
     st.subheader("Download results")
-
-    # CSV
+    
+    # CSV (now includes Total)  # <-- CHANGED
     csv_bytes = pivot.reset_index().to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇️ Download CSV",
@@ -107,20 +126,40 @@ if uploaded:
         file_name="training_status_pivot.csv",
         mime="text/csv"
     )
-
-    # Excel
+    
+    # Excel with auto-fit columns  # <-- CHANGED/NEW
     excel_buf = io.BytesIO()
     with pd.ExcelWriter(excel_buf, engine="xlsxwriter") as writer:
-        pivot.reset_index().to_excel(writer, index=False, sheet_name="Pivot")
+        out_df = pivot.reset_index()
+        out_df.to_excel(writer, index=False, sheet_name="Pivot")
+        ws = writer.sheets["Pivot"]
+    
+        # Autosize: pick a width based on the max string length per column
+        for col_idx, col in enumerate(out_df.columns):
+            # header width
+            max_len = len(str(col))
+            # data width
+            series_as_str = out_df[col].astype(str)
+            if not series_as_str.empty:
+                max_len = max(max_len, series_as_str.map(len).max())
+            # add a little padding; cap to something reasonable
+            ws.set_column(col_idx, col_idx, min(max_len + 2, 40))
+    
     st.download_button(
         label="⬇️ Download Excel",
         data=excel_buf.getvalue(),
         file_name="training_status_pivot.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    
+    # Small summary (unchanged, but now you also have totals per facility in-table)
+    st.markdown(
+        f"**Total rows processed:** {len(df):,} • "
+        f"**Expired:** {int(df['Past Due?'].sum()):,} • "
+        f"**Pending:** {int((~df['Past Due?']).sum()):,}"
+    )
+    # ... everything below unchanged ...
 
-    # Small summary
-    st.markdown(f"**Total rows processed:** {len(df):,} • **Expired:** {int(df['Past Due?'].sum()):,} • **Pending:** {int((~df['Past Due?']).sum()):,}")
 
 else:
     st.info("Upload an Excel or CSV to get started.")
