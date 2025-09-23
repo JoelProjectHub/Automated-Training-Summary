@@ -16,7 +16,8 @@ import streamlit as st
 import io
 
 st.set_page_config(page_title="Training Status Pivot", layout="wide")
-st.title("Training Status Pivot Builder: With Total")
+st.title("Training Status Pivot Builder")
+st.subheader("Author Joel Perez")
 
 st.markdown("""
 Upload your data, map the columns, and get a pivot table of **Facility × Status** (Expired/Pending) with counts.
@@ -107,9 +108,9 @@ if uploaded:
             pivot.sort_index(),
             use_container_width=True,
             column_config={
-                "Expired": st.column_config.NumberColumn(format="%,d", width="small"),
-                "Pending": st.column_config.NumberColumn(format="%,d", width="small"),
-                "Total":   st.column_config.NumberColumn(format="%,d", width="small"),
+                "Expired": st.column_config.NumberColumn(width="small"),
+                "Pending": st.column_config.NumberColumn(width="small"),
+                "Total":   st.column_config.NumberColumn(width="small"),
             }
         )
     except Exception:
