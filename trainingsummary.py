@@ -90,13 +90,11 @@ if uploaded:
 
     # Expired if not trained and due date has passed
     df["Status"] = np.where(
-        df["_trained_dt"].isna()
-        & df["_due_dt"].notna()
+        df["_due_dt"].notna()
         & (df["_due_dt"] <= today),
         "Expired",
         "Pending"
     )
-
     # Build pivot
     pivot = pd.pivot_table(
         df,
