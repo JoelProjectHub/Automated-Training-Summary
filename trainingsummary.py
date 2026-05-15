@@ -81,24 +81,25 @@ if uploaded:
     # Build pivot: counts of records by facility × status
 # ... everything above unchanged ...
 
-    # Build pivot: counts of records by facility × status
-    pivot = pd.pivot_table(
-        df,
-        values=due_col,            # any non-nullable col would work; we count rows
-        index=facility_col,
-        columns="Status",
-        aggfunc="count",
-        fill_value=0
-    )
-    
-    # Ensure both columns exist even if one is missing in data
-    for col in ["Expired", "Pending"]:
-        if col not in pivot.columns:
-            pivot[col] = 0
-    
-    # Order columns nicely + add Total  # <-- NEW
-    pivot = pivot[["Expired", "Pending"]]
-    pivot["Total"] = pivot["Expired"] + pivot["Pending"]  # <-- NEW
+expired_col = st.selectbox("Expired/count column", options=df.columns)
+
+df[expired_col] = pd.to_numeric(df[expired_col], errors="coerce").fillna(0)
+
+pivot = (
+    df.groupby(facility_col, dropna=False)[expired_col]
+      .sum()
+      .reset_index()
+      .rename(columns={facility_col: "Row Labels", expired_col: "Sum of Expired"})
+)
+
+total_row = pd.DataFrame({
+    "Row Labels": ["Grand Total"],
+    "Sum of Expired": [pivot["Sum of Expired"].sum()]
+})
+
+pivot = pd.concat([pivot, total_row], ignore_index=True)
+
+st.dataframe(pivot, use_container_width=True)
     
     st.subheader("Pivot: Facility × Status (counts)")
     
