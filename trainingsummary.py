@@ -156,10 +156,14 @@ if uploaded:
         for col_idx, col in enumerate(out_df.columns):
             # header width
             max_len = len(str(col))
-            # data width
-            series_as_str = out_df[col].astype(str)
-            if not series_as_str.empty:
-                max_len = max(max_len, series_as_str.map(len).max())
+        # data width
+        series_as_str = out_df[col].astype("string").fillna("")
+        
+        if not series_as_str.empty:
+            max_len = max(
+                max_len,
+                series_as_str.str.len().max()
+            )
             # add a little padding; cap to something reasonable
             ws.set_column(col_idx, col_idx, min(max_len + 2, 40))
     
