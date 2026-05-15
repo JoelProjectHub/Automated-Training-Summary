@@ -81,25 +81,41 @@ if uploaded:
     # Build pivot: counts of records by facility × status
 # ... everything above unchanged ...
 
-expired_col = st.selectbox("Expired/count column", options=df.columns)
+    # Select the column that contains the actual expired counts
+    expired_col = st.selectbox(
+        "Expired/count column",
+        options=df.columns
+    )
 
-df[expired_col] = pd.to_numeric(df[expired_col], errors="coerce").fillna(0)
+    # Convert to numeric just in case
+    df[expired_col] = pd.to_numeric(
+        df[expired_col],
+        errors="coerce"
+    ).fillna(0)
 
-pivot = (
-    df.groupby(facility_col, dropna=False)[expired_col]
-      .sum()
-      .reset_index()
-      .rename(columns={facility_col: "Row Labels", expired_col: "Sum of Expired"})
-)
+    # Build pivot matching Excel behavior
+    pivot = (
+        df.groupby(facility_col, dropna=False)[expired_col]
+          .sum()
+          .to_frame(name="Expired")
+    )
 
-total_row = pd.DataFrame({
-    "Row Labels": ["Grand Total"],
-    "Sum of Expired": [pivot["Sum of Expired"].sum()]
-})
+    # Add Total column
+    pivot["Total"] = pivot["Expired"]
 
-pivot = pd.concat([pivot, total_row], ignore_index=True)
+    st.subheader("Pivot: Facility × Status (counts)")
 
-st.dataframe(pivot, use_container_width=True)
+    try:
+        st.dataframe(
+            pivot.sort_index(),
+            use_container_width=True,
+            column_config={
+                "Expired": st.column_config.NumberColumn(width="small"),
+                "Total": st.column_config.NumberColumn(width="small"),
+            }
+        )
+    except Exception:
+        st.dataframe(pivot.sort_index(), use_container_width=True)
     
     st.subheader("Pivot: Facility × Status (counts)")
     
