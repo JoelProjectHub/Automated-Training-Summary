@@ -87,18 +87,22 @@ if uploaded:
         options=df.columns
     )
 
-    # Convert to numeric just in case
-    df[expired_col] = pd.to_numeric(
-        df[expired_col],
-        errors="coerce"
-    ).fillna(0)
+expired_raw = df[expired_col]
 
-    # Build pivot matching Excel behavior
-    pivot = (
-        df.groupby(facility_col, dropna=False)[expired_col]
-          .sum()
-          .to_frame(name="Expired")
-    )
+expired_num = pd.to_numeric(expired_raw, errors="coerce")
+
+if expired_num.notna().sum() > 0:
+    df["_expired_count"] = expired_num.fillna(0)
+else:
+    df["_expired_count"] = expired_raw.astype("string").str.strip().str.lower().isin(
+        ["yes", "true", "expired", "x", "1"]
+    ).astype(int)
+
+pivot = (
+    df.groupby(facility_col, dropna=False)["_expired_count"]
+      .sum()
+      .to_frame(name="Expired")
+)
 
     # Add Total column
     pivot["Total"] = pivot["Expired"]
