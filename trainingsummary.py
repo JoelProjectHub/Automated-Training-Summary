@@ -81,31 +81,41 @@ if uploaded:
     # Build pivot: counts of records by facility × status
 # ... everything above unchanged ...
 
-    # Select the column that contains the actual expired counts
-    expired_col = st.selectbox(
-        "Expired/count column",
-        options=df.columns
+    # Coerce to datetimes
+    df["_trained_dt"] = pd.to_datetime(df[trained_col], errors="coerce")
+    df["_due_dt"] = pd.to_datetime(df[due_col], errors="coerce")
+
+    # Today's date
+    today = pd.Timestamp.today().normalize()
+
+    # Expired if not trained and due date has passed
+    df["Status"] = np.where(
+        df["_trained_dt"].isna()
+        & df["_due_dt"].notna()
+        & (df["_due_dt"] <= today),
+        "Expired",
+        "Pending"
     )
 
-    expired_raw = df[expired_col]
-    
-    expired_num = pd.to_numeric(expired_raw, errors="coerce")
-    
-    if expired_num.notna().sum() > 0:
-        df["_expired_count"] = expired_num.fillna(0)
-    else:
-        df["_expired_count"] = expired_raw.astype("string").str.strip().str.lower().isin(
-            ["yes", "true", "expired", "x", "1"]
-        ).astype(int)
-    
-    pivot = (
-        df.groupby(facility_col, dropna=False)["_expired_count"]
-          .sum()
-          .to_frame(name="Expired")
+    # Build pivot
+    pivot = pd.pivot_table(
+        df,
+        index=facility_col,
+        columns="Status",
+        aggfunc="size",
+        fill_value=0
     )
 
-    # Add Total column
-    pivot["Total"] = pivot["Expired"]
+    # Ensure both columns exist
+    for col in ["Expired", "Pending"]:
+        if col not in pivot.columns:
+            pivot[col] = 0
+
+    # Order columns
+    pivot = pivot[["Expired", "Pending"]]
+
+    # Add total
+    pivot["Total"] = pivot["Expired"] + pivot["Pending"]
 
     st.subheader("Pivot: Facility × Status (counts)")
 
